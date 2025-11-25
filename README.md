@@ -8,7 +8,7 @@ Sistema web para gestão de oficina (ERP Automotivo), com front-end em React + T
 - Vite (ou Create React App, conforme o setup)
 - shadcn/ui + Tailwind CSS
 - React Router DOM
-- Backend C# (.NET Web API) – integração via HTTP/JSON [web:162][web:214]
+- Backend C# (.NET Web API) – integração via HTTP/JSON 
 
 ## 🚀 Como rodar o projeto
 
