@@ -1,17 +1,19 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import produtoService from "@/services/produto.service";
-import type { ProdutoServicoCreateDto } from "@/types/produto.types";
+import type { ProdutoServicoUpdateDto } from "@/types/produto.types";
+import { parseValidationErrors, getFieldError, type ValidationErrors } from "@/lib/validation-errors";
 
-export default function CriarProduto() {
+export default function EditarProduto() {
     const navigate = useNavigate();
+    const { id } = useParams<{ id: string }>();
     
-    const [formData, setFormData] = useState<ProdutoServicoCreateDto>({
+    const [formData, setFormData] = useState<ProdutoServicoUpdateDto>({
         nome: "",
         descricao: "",
         fornecedor: "",
@@ -20,7 +22,39 @@ export default function CriarProduto() {
     });
 
     const [loading, setLoading] = useState(false);
+    const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [validationErrors, setValidationErrors] = useState<ValidationErrors | null>(null);
+
+    useEffect(() => {
+        const loadProduto = async () => {
+            if (!id) {
+                setError("ID do produto não fornecido");
+                setLoadingData(false);
+                return;
+            }
+
+            try {
+                setLoadingData(true);
+                const produto = await produtoService.getById(parseInt(id));
+                
+                setFormData({
+                    nome: produto.nome,
+                    descricao: produto.descricao,
+                    fornecedor: produto.fornecedor || "",
+                    custo: produto.custo,
+                    valor: produto.valor
+                });
+            } catch (err: any) {
+                console.error('Error loading produto:', err);
+                setError('Erro ao carregar dados do produto/serviço');
+            } finally {
+                setLoadingData(false);
+            }
+        };
+
+        loadProduto();
+    }, [id]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -35,30 +69,50 @@ export default function CriarProduto() {
         }
         
         if (error) setError(null);
+        if (validationErrors) setValidationErrors(null);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
+        if (!id) return;
+
         try {
             setLoading(true);
             setError(null);
+            setValidationErrors(null);
 
-            await produtoService.create(formData);
+            await produtoService.update(parseInt(id), formData);
             
             navigate("/produtos");
         } catch (err: any) {
-            console.error('Error creating produto:', err);
-            setError(err.response?.data?.message || 'Erro ao criar produto/serviço. Tente novamente.');
+            console.error('Error updating produto:', err);
+            
+            const validationErrs = parseValidationErrors(err);
+            
+            if (validationErrs) {
+                setValidationErrors(validationErrs);
+                setError('Por favor, corrija os erros abaixo.');
+            } else {
+                setError(err.response?.data?.message || 'Erro ao atualizar produto/serviço. Tente novamente.');
+            }
         } finally {
             setLoading(false);
         }
     };
 
+    if (loadingData) {
+        return (
+            <div className="flex flex-1 items-center justify-center p-4">
+                <p>Carregando dados do produto/serviço...</p>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-1 flex-col gap-4 p-4">
             <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Cadastrar Produto/Serviço</h1>
+                <h1 className="text-3xl font-bold">Editar Produto/Serviço</h1>
                 <Button 
                     variant="outline" 
                     onClick={() => navigate("/produtos")}
@@ -90,7 +144,11 @@ export default function CriarProduto() {
                                 required
                                 maxLength={30}
                                 disabled={loading}
+                                className={getFieldError(validationErrors, 'nome') ? 'border-red-500' : ''}
                             />
+                            {getFieldError(validationErrors, 'nome') && (
+                                <p className="text-sm text-red-600">{getFieldError(validationErrors, 'nome')}</p>
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -105,7 +163,11 @@ export default function CriarProduto() {
                                 maxLength={50}
                                 disabled={loading}
                                 rows={3}
+                                className={getFieldError(validationErrors, 'descricao') ? 'border-red-500' : ''}
                             />
+                            {getFieldError(validationErrors, 'descricao') && (
+                                <p className="text-sm text-red-600">{getFieldError(validationErrors, 'descricao')}</p>
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -118,7 +180,11 @@ export default function CriarProduto() {
                                 onChange={handleChange}
                                 maxLength={30}
                                 disabled={loading}
+                                className={getFieldError(validationErrors, 'fornecedor') ? 'border-red-500' : ''}
                             />
+                            {getFieldError(validationErrors, 'fornecedor') && (
+                                <p className="text-sm text-red-600">{getFieldError(validationErrors, 'fornecedor')}</p>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -134,7 +200,11 @@ export default function CriarProduto() {
                                     value={formData.custo ?? ""}
                                     onChange={handleChange}
                                     disabled={loading}
+                                    className={getFieldError(validationErrors, 'custo') ? 'border-red-500' : ''}
                                 />
+                                {getFieldError(validationErrors, 'custo') && (
+                                    <p className="text-sm text-red-600">{getFieldError(validationErrors, 'custo')}</p>
+                                )}
                                 <p className="text-xs text-muted-foreground">Valor de custo</p>
                             </div>
 
@@ -151,7 +221,11 @@ export default function CriarProduto() {
                                     onChange={handleChange}
                                     required
                                     disabled={loading}
+                                    className={getFieldError(validationErrors, 'valor') ? 'border-red-500' : ''}
                                 />
+                                {getFieldError(validationErrors, 'valor') && (
+                                    <p className="text-sm text-red-600">{getFieldError(validationErrors, 'valor')}</p>
+                                )}
                                 <p className="text-xs text-muted-foreground">Preço de venda</p>
                             </div>
                         </div>
@@ -161,7 +235,7 @@ export default function CriarProduto() {
                                 type="submit" 
                                 disabled={loading}
                             >
-                                {loading ? "Salvando..." : "Salvar Produto/Serviço"}
+                                {loading ? "Salvando..." : "Salvar Alterações"}
                             </Button>
                             <Button
                                 type="button"

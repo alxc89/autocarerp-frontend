@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,16 +10,18 @@ import ordemServicoService from "@/services/ordem-servico.service";
 import clienteService from "@/services/cliente.service";
 import veiculoService from "@/services/veiculo.service";
 import produtoService from "@/services/produto.service";
-import type { OrdemDeServicoCreateDto } from "@/types/ordem-servico.types";
+import type { OrdemDeServicoUpdateDto } from "@/types/ordem-servico.types";
 import type { ClienteReadDto } from "@/types/cliente.types";
 import type { VeiculoReadDto } from "@/types/veiculo.types";
 import type { ProdutoServicoReadDto } from "@/types/produto.types";
+import { parseValidationErrors, type ValidationErrors } from "@/lib/validation-errors";
 
-export default function CriarOrdemServico() {
+export default function EditarOrdemServico() {
     const navigate = useNavigate();
+    const { id } = useParams<{ id: string }>();
     
-    const [formData, setFormData] = useState<OrdemDeServicoCreateDto>({
-        horaAbertura: new Date().toISOString().slice(0, 16), // YYYY-MM-DDTHH:mm
+    const [formData, setFormData] = useState<OrdemDeServicoUpdateDto>({
+        horaAbertura: "",
         horaFechamento: undefined,
         veiculoId: 0,
         clienteId: 0,
@@ -37,12 +39,20 @@ export default function CriarOrdemServico() {
     const [loading, setLoading] = useState(false);
     const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [validationErrors, setValidationErrors] = useState<ValidationErrors | null>(null);
 
     useEffect(() => {
-        const loadInitialData = async () => {
+        const loadData = async () => {
+            if (!id) {
+                setError("ID da ordem de serviço não fornecido");
+                setLoadingData(false);
+                return;
+            }
+
             try {
                 setLoadingData(true);
-                const [clientesResult, veiculosResult, produtosResult] = await Promise.all([
+                const [os, clientesResult, veiculosResult, produtosResult] = await Promise.all([
+                    ordemServicoService.getById(parseInt(id)),
                     clienteService.getAll({ page: 1, pageSize: 100 }),
                     veiculoService.getAll({ page: 1, pageSize: 100 }),
                     produtoService.getAll({ page: 1, pageSize: 100 })
@@ -51,18 +61,30 @@ export default function CriarOrdemServico() {
                 setClientes(clientesResult.items);
                 setVeiculos(veiculosResult.items);
                 setProdutos(produtosResult.items);
+                
+                setFormData({
+                    horaAbertura: new Date(os.horaAbertura).toISOString().slice(0, 16),
+                    horaFechamento: os.horaFechamento ? new Date(os.horaFechamento).toISOString().slice(0, 16) : undefined,
+                    veiculoId: os.veiculoId,
+                    clienteId: os.clienteId,
+                    produtoServicoId: os.produtoServicoId,
+                    quantidade: os.quantidade,
+                    valorUnitario: os.valorUnitario,
+                    valorTotal: os.valorTotal,
+                    observacao: os.observacao || "",
+                    status: os.status
+                });
             } catch (err: any) {
-                console.error('Error loading data:', err);
-                setError('Erro ao carregar dados. Tente novamente.');
+                console.error('Error loading ordem de servico:', err);
+                setError('Erro ao carregar dados da ordem de serviço');
             } finally {
                 setLoadingData(false);
             }
         };
 
-        loadInitialData();
-    }, []);
+        loadData();
+    }, [id]);
 
-    // Recalculate valorTotal when quantidade or valorUnitario changes
     useEffect(() => {
         const total = formData.quantidade * formData.valorUnitario;
         if (formData.valorTotal !== total) {
@@ -80,6 +102,7 @@ export default function CriarOrdemServico() {
         }
         
         if (error) setError(null);
+        if (validationErrors) setValidationErrors(null);
     };
 
     const handleSelectChange = (name: string, value: string) => {
@@ -88,35 +111,43 @@ export default function CriarOrdemServico() {
             setFormData({ 
                 ...formData, 
                 [name]: parseInt(value),
-                valorUnitario: produto?.valor || 0
+                valorUnitario: produto?.valor || formData.valorUnitario
             });
         } else {
-            setFormData({ ...formData, [name]: parseInt(value) });
+            setFormData({ ...formData, [name]: name === 'status' ? value : parseInt(value) });
         }
         if (error) setError(null);
+        if (validationErrors) setValidationErrors(null);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        if (!formData.clienteId || !formData.veiculoId || !formData.produtoServicoId) {
-            setError('Por favor, selecione cliente, veículo e produto/serviço');
-            return;
-        }
+        if (!id) return;
 
         try {
             setLoading(true);
             setError(null);
+            setValidationErrors(null);
 
-            await ordemServicoService.create({
+            await ordemServicoService.update(parseInt(id), {
                 ...formData,
-                horaAbertura: new Date(formData.horaAbertura).toISOString()
+                horaAbertura: new Date(formData.horaAbertura).toISOString(),
+                horaFechamento: formData.horaFechamento ? new Date(formData.horaFechamento).toISOString() : undefined
             });
             
             navigate("/ordem-servico");
         } catch (err: any) {
-            console.error('Error creating ordem de servico:', err);
-            setError(err.response?.data?.message || 'Erro ao criar ordem de serviço. Tente novamente.');
+            console.error('Error updating ordem de servico:', err);
+            
+            const validationErrs = parseValidationErrors(err);
+            
+            if (validationErrs) {
+                setValidationErrors(validationErrs);
+                setError('Por favor, corrija os erros abaixo.');
+            } else {
+                setError(err.response?.data?.message || 'Erro ao atualizar ordem de serviço. Tente novamente.');
+            }
         } finally {
             setLoading(false);
         }
@@ -125,7 +156,7 @@ export default function CriarOrdemServico() {
     if (loadingData) {
         return (
             <div className="flex flex-1 items-center justify-center p-4">
-                <p>Carregando dados...</p>
+                <p>Carregando dados da ordem de serviço...</p>
             </div>
         );
     }
@@ -133,7 +164,7 @@ export default function CriarOrdemServico() {
     return (
         <div className="flex flex-1 flex-col gap-4 p-4">
             <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Abrir Ordem de Serviço</h1>
+                <h1 className="text-3xl font-bold">Editar Ordem de Serviço</h1>
                 <Button 
                     variant="outline" 
                     onClick={() => navigate("/ordem-servico")}
@@ -158,6 +189,7 @@ export default function CriarOrdemServico() {
                             <div className="space-y-2">
                                 <Label htmlFor="clienteId">Cliente *</Label>
                                 <Select 
+                                    value={formData.clienteId.toString()}
                                     onValueChange={(value) => handleSelectChange('clienteId', value)}
                                     disabled={loading}
                                 >
@@ -177,6 +209,7 @@ export default function CriarOrdemServico() {
                             <div className="space-y-2">
                                 <Label htmlFor="veiculoId">Veículo *</Label>
                                 <Select 
+                                    value={formData.veiculoId.toString()}
                                     onValueChange={(value) => handleSelectChange('veiculoId', value)}
                                     disabled={loading}
                                 >
@@ -197,6 +230,7 @@ export default function CriarOrdemServico() {
                         <div className="space-y-2">
                             <Label htmlFor="produtoServicoId">Produto/Serviço *</Label>
                             <Select 
+                                value={formData.produtoServicoId.toString()}
                                 onValueChange={(value) => handleSelectChange('produtoServicoId', value)}
                                 disabled={loading}
                             >
@@ -271,10 +305,23 @@ export default function CriarOrdemServico() {
                         </div>
 
                         <div className="space-y-2">
+                            <Label htmlFor="horaFechamento">Data/Hora de Fechamento</Label>
+                            <Input
+                                id="horaFechamento"
+                                name="horaFechamento"
+                                type="datetime-local"
+                                value={formData.horaFechamento || ""}
+                                onChange={handleChange}
+                                disabled={loading}
+                            />
+                            <p className="text-xs text-muted-foreground">Deixe em branco se ainda não foi finalizada</p>
+                        </div>
+
+                        <div className="space-y-2">
                             <Label htmlFor="status">Status *</Label>
                             <Select 
                                 value={formData.status}
-                                onValueChange={(value) => setFormData({ ...formData, status: value })}
+                                onValueChange={(value) => handleSelectChange('status', value)}
                                 disabled={loading}
                             >
                                 <SelectTrigger>
@@ -307,7 +354,7 @@ export default function CriarOrdemServico() {
                                 type="submit" 
                                 disabled={loading}
                             >
-                                {loading ? "Salvando..." : "Abrir Ordem de Serviço"}
+                                {loading ? "Salvando..." : "Salvar Alterações"}
                             </Button>
                             <Button
                                 type="button"

@@ -1,17 +1,18 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import clienteService from "@/services/cliente.service";
-import type { ClienteCreateDto } from "@/types/cliente.types";
+import type { ClienteUpdateDto } from "@/types/cliente.types";
 import { parseValidationErrors, getFieldError, type ValidationErrors } from "@/lib/validation-errors";
 
-export default function CriarCliente() {
+export default function EditarCliente() {
     const navigate = useNavigate();
+    const { id } = useParams<{ id: string }>();
     
-    const [formData, setFormData] = useState<ClienteCreateDto>({
+    const [formData, setFormData] = useState<ClienteUpdateDto>({
         nome: "",
         telefone: "",
         cpfCnpj: "",
@@ -20,8 +21,40 @@ export default function CriarCliente() {
     });
 
     const [loading, setLoading] = useState(false);
+    const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [validationErrors, setValidationErrors] = useState<ValidationErrors | null>(null);
+
+    // Load cliente data on mount
+    useEffect(() => {
+        const loadCliente = async () => {
+            if (!id) {
+                setError("ID do cliente não fornecido");
+                setLoadingData(false);
+                return;
+            }
+
+            try {
+                setLoadingData(true);
+                const cliente = await clienteService.getById(parseInt(id));
+                
+                setFormData({
+                    nome: cliente.nome,
+                    telefone: cliente.telefone || "",
+                    cpfCnpj: cliente.cpfCnpj || "",
+                    endereco: cliente.endereco || "",
+                    email: cliente.email || ""
+                });
+            } catch (err: any) {
+                console.error('Error loading cliente:', err);
+                setError('Erro ao carregar dados do cliente');
+            } finally {
+                setLoadingData(false);
+            }
+        };
+
+        loadCliente();
+    }, [id]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -33,39 +66,46 @@ export default function CriarCliente() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
+        if (!id) return;
+
         try {
             setLoading(true);
             setError(null);
             setValidationErrors(null);
 
-            await clienteService.create(formData);
+            await clienteService.update(parseInt(id), formData);
             
             // Navigate to list page on success
             navigate("/clientes");
         } catch (err: any) {
-            console.error('Error creating cliente:', err);
-            console.log('Error response data:', err.response?.data);
-            console.log('Error response status:', err.response?.status);
+            console.error('Error updating cliente:', err);
             
             // Try to parse validation errors
             const validationErrs = parseValidationErrors(err);
-            console.log('Parsed validation errors:', validationErrs);
             
             if (validationErrs) {
                 setValidationErrors(validationErrs);
                 setError('Por favor, corrija os erros abaixo.');
             } else {
-                setError(err.response?.data?.message || 'Erro ao criar cliente. Tente novamente.');
+                setError(err.response?.data?.message || 'Erro ao atualizar cliente. Tente novamente.');
             }
         } finally {
             setLoading(false);
         }
     };
 
+    if (loadingData) {
+        return (
+            <div className="flex flex-1 items-center justify-center p-4">
+                <p>Carregando dados do cliente...</p>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-1 flex-col gap-4 p-4">
             <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Cadastrar Cliente</h1>
+                <h1 className="text-3xl font-bold">Editar Cliente</h1>
                 <Button 
                     variant="outline" 
                     onClick={() => navigate("/clientes")}
@@ -178,7 +218,7 @@ export default function CriarCliente() {
                                 type="submit" 
                                 disabled={loading}
                             >
-                                {loading ? "Salvando..." : "Salvar Cliente"}
+                                {loading ? "Salvando..." : "Salvar Alterações"}
                             </Button>
                             <Button
                                 type="button"

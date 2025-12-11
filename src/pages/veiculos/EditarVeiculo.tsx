@@ -1,16 +1,18 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import veiculoService from "@/services/veiculo.service";
-import type { VeiculoCreateDto } from "@/types/veiculo.types";
+import type { VeiculoUpdateDto } from "@/types/veiculo.types";
+import { parseValidationErrors, getFieldError, type ValidationErrors } from "@/lib/validation-errors";
 
-export default function CriarVeiculo() {
+export default function EditarVeiculo() {
     const navigate = useNavigate();
+    const { id } = useParams<{ id: string }>();
     
-    const [formData, setFormData] = useState<VeiculoCreateDto>({
+    const [formData, setFormData] = useState<VeiculoUpdateDto>({
         placa: "",
         marca: "",
         modelo: "",
@@ -19,7 +21,40 @@ export default function CriarVeiculo() {
     });
 
     const [loading, setLoading] = useState(false);
+    const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [validationErrors, setValidationErrors] = useState<ValidationErrors | null>(null);
+
+    // Load veiculo data on mount
+    useEffect(() => {
+        const loadVeiculo = async () => {
+            if (!id) {
+                setError("ID do veículo não fornecido");
+                setLoadingData(false);
+                return;
+            }
+
+            try {
+                setLoadingData(true);
+                const veiculo = await veiculoService.getById(parseInt(id));
+                
+                setFormData({
+                    placa: veiculo.placa,
+                    marca: veiculo.marca,
+                    modelo: veiculo.modelo,
+                    cor: veiculo.cor,
+                    ano: veiculo.ano
+                });
+            } catch (err: any) {
+                console.error('Error loading veiculo:', err);
+                setError('Erro ao carregar dados do veículo');
+            } finally {
+                setLoadingData(false);
+            }
+        };
+
+        loadVeiculo();
+    }, [id]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -28,30 +63,50 @@ export default function CriarVeiculo() {
             [name]: name === 'ano' ? parseInt(value) || 0 : value 
         });
         if (error) setError(null);
+        if (validationErrors) setValidationErrors(null);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
+        if (!id) return;
+
         try {
             setLoading(true);
             setError(null);
+            setValidationErrors(null);
 
-            await veiculoService.create(formData);
+            await veiculoService.update(parseInt(id), formData);
             
             navigate("/veiculos");
         } catch (err: any) {
-            console.error('Error creating veiculo:', err);
-            setError(err.response?.data?.message || 'Erro ao criar veículo. Tente novamente.');
+            console.error('Error updating veiculo:', err);
+            
+            const validationErrs = parseValidationErrors(err);
+            
+            if (validationErrs) {
+                setValidationErrors(validationErrs);
+                setError('Por favor, corrija os erros abaixo.');
+            } else {
+                setError(err.response?.data?.message || 'Erro ao atualizar veículo. Tente novamente.');
+            }
         } finally {
             setLoading(false);
         }
     };
 
+    if (loadingData) {
+        return (
+            <div className="flex flex-1 items-center justify-center p-4">
+                <p>Carregando dados do veículo...</p>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-1 flex-col gap-4 p-4">
             <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Cadastrar Veículo</h1>
+                <h1 className="text-3xl font-bold">Editar Veículo</h1>
                 <Button 
                     variant="outline" 
                     onClick={() => navigate("/veiculos")}
@@ -83,7 +138,11 @@ export default function CriarVeiculo() {
                                 required
                                 maxLength={10}
                                 disabled={loading}
+                                className={getFieldError(validationErrors, 'placa') ? 'border-red-500' : ''}
                             />
+                            {getFieldError(validationErrors, 'placa') && (
+                                <p className="text-sm text-red-600">{getFieldError(validationErrors, 'placa')}</p>
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -97,7 +156,11 @@ export default function CriarVeiculo() {
                                 required
                                 maxLength={15}
                                 disabled={loading}
+                                className={getFieldError(validationErrors, 'marca') ? 'border-red-500' : ''}
                             />
+                            {getFieldError(validationErrors, 'marca') && (
+                                <p className="text-sm text-red-600">{getFieldError(validationErrors, 'marca')}</p>
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -111,7 +174,11 @@ export default function CriarVeiculo() {
                                 required
                                 maxLength={15}
                                 disabled={loading}
+                                className={getFieldError(validationErrors, 'modelo') ? 'border-red-500' : ''}
                             />
+                            {getFieldError(validationErrors, 'modelo') && (
+                                <p className="text-sm text-red-600">{getFieldError(validationErrors, 'modelo')}</p>
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -125,7 +192,11 @@ export default function CriarVeiculo() {
                                 required
                                 maxLength={15}
                                 disabled={loading}
+                                className={getFieldError(validationErrors, 'cor') ? 'border-red-500' : ''}
                             />
+                            {getFieldError(validationErrors, 'cor') && (
+                                <p className="text-sm text-red-600">{getFieldError(validationErrors, 'cor')}</p>
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -141,7 +212,11 @@ export default function CriarVeiculo() {
                                 min={1900}
                                 max={new Date().getFullYear() + 1}
                                 disabled={loading}
+                                className={getFieldError(validationErrors, 'ano') ? 'border-red-500' : ''}
                             />
+                            {getFieldError(validationErrors, 'ano') && (
+                                <p className="text-sm text-red-600">{getFieldError(validationErrors, 'ano')}</p>
+                            )}
                         </div>
 
                         <div className="flex gap-2 pt-4">
@@ -149,7 +224,7 @@ export default function CriarVeiculo() {
                                 type="submit" 
                                 disabled={loading}
                             >
-                                {loading ? "Salvando..." : "Salvar Veículo"}
+                                {loading ? "Salvando..." : "Salvar Alterações"}
                             </Button>
                             <Button
                                 type="button"

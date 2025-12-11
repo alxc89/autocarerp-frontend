@@ -1,5 +1,5 @@
 // src/pages/Configuracoes.tsx
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,10 +12,15 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { useAuth } from "@/hooks/use-auth"
+import userService from "@/services/user.service"
+import toast, { Toaster } from 'react-hot-toast'
 
 export default function Configuracoes() {
-    const [nome, setNome] = useState("Administrador")
-    const [email, setEmail] = useState("admin@sistema.com")
+    const { user } = useAuth()
+    
+    const [nome, setNome] = useState("")
+    const [email, setEmail] = useState("")
     const [tema, setTema] = useState<"light" | "dark">("light")
     const [idioma, setIdioma] = useState<"pt-BR" | "en-US">("pt-BR")
     const [notifOsAtrasada, setNotifOsAtrasada] = useState(true)
@@ -24,35 +29,89 @@ export default function Configuracoes() {
     const [novaSenha, setNovaSenha] = useState("")
     const [confirmaSenha, setConfirmaSenha] = useState("")
 
-    const handleSalvarPerfil = () => {
-        // TODO: chamada API C#
-        // fetch("/api/usuarios/perfil", { method: "PUT", body: JSON.stringify({ nome, email }) })
+    const [loadingPerfil, setLoadingPerfil] = useState(false)
+    const [loadingSenha, setLoadingSenha] = useState(false)
+    const [loadingPreferencias, setLoadingPreferencias] = useState(false)
+
+    // Load preferences on mount
+    useEffect(() => {
+        if (user) {
+            setNome(user.username || "")
+            setEmail(user.email || "")
+            loadPreferences()
+        }
+    }, [user])
+
+    const loadPreferences = async () => {
+        try {
+            const prefs = await userService.getPreferences()
+            setTema(prefs.tema)
+            setIdioma(prefs.idioma)
+            setNotifOsAtrasada(prefs.notificarOsAtrasada)
+        } catch (error: any) {
+            console.error('Erro ao carregar preferências:', error)
+        }
     }
 
-    const handleSalvarPreferencias = () => {
-        // TODO: chamada API C#
+    const handleSalvarPerfil = async () => {
+        setLoadingPerfil(true)
+        try {
+            await userService.updateProfile({ nome, email })
+            toast.success('Perfil atualizado com sucesso!')
+        } catch (error: any) {
+            toast.error(error.response?.data || 'Erro ao atualizar perfil')
+        } finally {
+            setLoadingPerfil(false)
+        }
     }
 
-    const handleTrocarSenha = () => {
+    const handleSalvarPreferencias = async () => {
+        setLoadingPreferencias(true)
+        try {
+            await userService.updatePreferences({
+                tema,
+                idioma,
+                notificarOsAtrasada: notifOsAtrasada,
+            })
+            toast.success('Preferências salvas com sucesso!')
+        } catch (error: any) {
+            toast.error(error.response?.data || 'Erro ao salvar preferências')
+        } finally {
+            setLoadingPreferencias(false)
+        }
+    }
+
+    const handleTrocarSenha = async () => {
         if (novaSenha !== confirmaSenha) {
-            alert("Nova senha e confirmação não conferem.")
+            toast.error("Nova senha e confirmação não conferem")
             return
         }
 
-        // TODO: chamada API C#
-        // fetch("/api/usuarios/trocar-senha", {
-        //   method: "POST",
-        //   headers: { "Content-Type": "application/json" },
-        //   body: JSON.stringify({ senhaAtual, novaSenha }),
-        // })
+        if (novaSenha.length < 8) {
+            toast.error("A senha deve ter no mínimo 8 caracteres")
+            return
+        }
 
-        setSenhaAtual("")
-        setNovaSenha("")
-        setConfirmaSenha("")
+        setLoadingSenha(true)
+        try {
+            await userService.changePassword({
+                senhaAtual,
+                novaSenha,
+            })
+            toast.success('Senha alterada com sucesso!')
+            setSenhaAtual("")
+            setNovaSenha("")
+            setConfirmaSenha("")
+        } catch (error: any) {
+            toast.error(error.response?.data || 'Erro ao alterar senha')
+        } finally {
+            setLoadingSenha(false)
+        }
     }
 
     return (
         <div className="p-4 space-y-4">
+            <Toaster position="top-right" />
             <h1 className="text-2xl font-bold">Configurações</h1>
 
             {/* Perfil */}
@@ -75,7 +134,9 @@ export default function Configuracoes() {
                             />
                         </div>
                     </div>
-                    <Button onClick={handleSalvarPerfil}>Salvar perfil</Button>
+                    <Button onClick={handleSalvarPerfil} disabled={loadingPerfil}>
+                        {loadingPerfil ? "Salvando..." : "Salvar perfil"}
+                    </Button>
                 </CardContent>
             </Card>
 
@@ -111,8 +172,8 @@ export default function Configuracoes() {
                             />
                         </div>
                     </div>
-                    <Button variant="outline" onClick={handleTrocarSenha}>
-                        Atualizar senha
+                    <Button variant="outline" onClick={handleTrocarSenha} disabled={loadingSenha}>
+                        {loadingSenha ? "Atualizando..." : "Atualizar senha"}
                     </Button>
                 </CardContent>
             </Card>
@@ -162,8 +223,8 @@ export default function Configuracoes() {
                             <span>Notificar O.S. atrasadas</span>
                         </div>
                     </div>
-                    <Button onClick={handleSalvarPreferencias}>
-                        Salvar preferências
+                    <Button onClick={handleSalvarPreferencias} disabled={loadingPreferencias}>
+                        {loadingPreferencias ? "Salvando..." : "Salvar preferências"}
                     </Button>
                 </CardContent>
             </Card>
